@@ -156,7 +156,7 @@ AGENT_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_internet",
-            "description": "联网搜索最新资讯、新闻或本地知识库中找不到的实时信息。仅在本地文档无法回答时使用。",
+            "description": "DP: 联网搜索最新资讯、新闻或实时信息。禁止用于查询天气（天气请用 get_real_weather）。仅在本地文档无法回答时使用。",
             "parameters": {
                 "type": "object",
                 "properties": {
