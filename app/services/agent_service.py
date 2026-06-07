@@ -104,14 +104,19 @@ async def qwen_llm_generator(query: str, session_id: str):
         # DP: 2. 加载最近 6 条聊天历史
         history = get_recent_messages(session_id, limit=6)
 
-        # DP: 3. 构建 RAG 上下文消息
+        # DP: 3. 构建 RAG 上下文 — 仅当本地库有相关文档时才注入
         rag_context = ""
-        if retrieved_docs:
+        if retrieved_docs and source_text:
+            # DP: 本地有相关文档 → 注入知识库上下文
             rag_context = "\n\n【本地知识库】\n" + "\n".join(retrieved_docs)
+        elif not source_text:
+            # DP: 本地无相关文档 → 明确告知 LLM 需联网搜索
+            rag_context = "\n\n【本地知识库】无相关文档，请务必调用 search_internet 联网搜索。"
 
         system_prompt = (
             "你是企业AI助理。优先参考【本地知识库】回答。"
-            "本地资料足够时不要调工具。无法回答时才调 search_internet。问天气调 get_real_weather。"
+            "若【本地知识库】无相关文档，必须调用 search_internet 联网搜索，不要凭空编造。"
+            "本地资料足够时不要调工具。问天气调 get_real_weather。"
             "回答简洁、用中文。"
         )
 
