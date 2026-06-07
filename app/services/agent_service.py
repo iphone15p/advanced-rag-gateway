@@ -4,7 +4,7 @@ import asyncio
 import jieba
 import dashscope
 from app.core.config import settings
-from app.services.tools import search_internet, get_real_weather, AGENT_TOOLS
+from app.services.tools import search_internet, get_real_weather, AGENT_TOOLS, get_last_web_sources
 from app.database.chroma_store import knowledge_collection
 from app.database.sqlite_store import save_message_with_source, get_recent_messages
 
@@ -57,20 +57,36 @@ def _get_attr(obj, key, default=None):
     return getattr(obj, key, default)
 
 
-# DP: 用 jieba 分词检测文档与查询是否相关，不相关则不显示来源
+# DP: 用 jieba 分词在所有检索文档中找最佳匹配作为来源，不相关则不显示
 def _format_source(docs, query=""):
     if not docs:
         return ""
-    doc = docs[0]
-    query_tokens = set(jieba.cut(query))
+    # DP: 构建查询词集合（去停用词）
     stop = {"的", "了", "是", "吗", "呢", "吧", "啊", "在", "有", "我", "你", "他", "这", "那", "什么", "怎么", "哪个", "多少", "为什么", "可以", "一个"}
-    query_tokens = {t for t in query_tokens if len(t) > 1 and t not in stop}
-    if query_tokens:
-        matched = sum(1 for t in query_tokens if t in doc[:400])
-        if matched == 0:
-            return ""  # DP: 完全不相关，不展示
-    short = doc[:150].replace("\n", " ").strip()
-    if len(doc) > 150:
+    query_tokens = {t for t in jieba.cut(query) if len(t) > 1 and t not in stop}
+
+    if not query_tokens:
+        # DP: 无有效查询词，直接返回第一篇摘要
+        doc = docs[0]
+        short = doc[:150].replace("\n", " ").strip()
+        if len(doc) > 150:
+            short += "..."
+        return short
+
+    # DP: 遍历所有文档找最佳匹配（而非只看第一篇）
+    best_doc = None
+    best_score = -1
+    for doc in docs:
+        score = sum(1 for t in query_tokens if t in doc[:400])
+        if score > best_score:
+            best_score = score
+            best_doc = doc
+
+    if best_score == 0 or best_doc is None:
+        return ""  # DP: 所有文档都不相关，不展示来源
+
+    short = best_doc[:150].replace("\n", " ").strip()
+    if len(best_doc) > 150:
         short += "..."
     return short
 
@@ -140,8 +156,16 @@ async def qwen_llm_generator(query: str, session_id: str):
             try:
                 if func_name == "get_real_weather":
                     tool_result = await asyncio.to_thread(get_real_weather, func_args.get("location", ""))
+                    # DP: 天气查询来源标记
+                    source_text = f"🌤️ 天气查询: {func_args.get('location', '')}"
                 else:
                     tool_result = await asyncio.to_thread(search_internet, func_args.get("query", ""))
+                    # DP: 联网搜索来源标记，显示搜索URL
+                    web_urls = get_last_web_sources()
+                    if web_urls:
+                        source_text = "🌐 网络搜索: " + " | ".join(web_urls[:2])
+                    else:
+                        source_text = f"🌐 网络搜索: {func_args.get('query', '')}"
             except Exception as te:
                 tool_result = f"调用失败: {str(te)}"
 

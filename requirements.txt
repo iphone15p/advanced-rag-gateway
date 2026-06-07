@@ -9,5 +9,6 @@ pdfplumber>=0.10.0
 jieba>=0.42.0
 rank-bm25>=0.2.0
 tavily-python>=0.3.0
+ddgs>=7.0.0
 python-multipart>=0.0.6
 aiofiles>=23.0.0
